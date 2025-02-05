@@ -152,6 +152,8 @@ function PaymentOptionsWall({
                       ]
                         .filter(Boolean)
                         .join(" ")}
+
+                        //gooof
                     />
                   </Parallax>
                 ))}
