@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send } from "lucide-react";
+import { Send } from 'lucide-react';
 import { Parallax, ParallaxProvider } from "react-scroll-parallax";
 import type React from "react";
 import Waves from "@/components/reactbits/Waves";
+import Loader from '@/components/Loader';
+import { useRouter } from 'next/navigation';
 
 const stagger = {
   animate: {
@@ -70,6 +72,14 @@ export default function SupportPage() {
   });
   const [mounted, setMounted] = useState(false);
   const [customTagInput, setCustomTagInput] = useState("");
+  const [feedback, setFeedback] = useState<{
+    type: 'success' | 'error' | '';
+    message: string;
+  }>({ type: '', message: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+  const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
@@ -106,10 +116,78 @@ export default function SupportPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
-    // Here you would typically send the form data to your backend
+    setFeedback({ type: '', message: '' });
+    setIsSubmitting(true);
+
+    try {
+      if (!selectedRole) {
+        setFeedback({ 
+          type: 'error', 
+          message: 'Please select a role' 
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!formData.fullName || !formData.email || !formData.preferredContact) {
+        setFeedback({ 
+          type: 'error', 
+          message: 'Please fill in all required fields' 
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const submitData = {
+        ...formData,
+        userRole: selectedRole,
+      };
+
+      const response = await fetch('/support-us/api', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submitData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || `Error: ${response.status}`);
+      }
+
+      if (data?.success) {
+        setSubmitSuccess(true);
+        setFeedback({
+          type: 'success',
+          message: 'Thank you for your submission! Redirecting to home page...'
+        });
+        
+        // Start countdown
+        let count = 5;
+        const timer = setInterval(() => {
+          count--;
+          setCountdown(count);
+          if (count === 0) {
+            clearInterval(timer);
+            router.push('/');
+          }
+        }, 1000);
+      } else {
+        throw new Error(data?.message || 'Submission failed');
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to submit form. Please try again.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAddCustomTag = () => {
@@ -432,6 +510,42 @@ export default function SupportPage() {
     </motion.div>
   );
 
+  const renderFeedback = () => {
+    if (!feedback.message) return null;
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className={`text-center p-4 rounded-lg ${
+          feedback.type === 'success' 
+            ? 'bg-green-900/50 text-green-300 border border-green-500/50' 
+            : 'bg-red-900/50 text-red-300 border border-red-500/50'
+        }`}
+      >
+        <span>{feedback.message}</span>
+      </motion.div>
+    );
+  };
+
+  useEffect(() => {
+    if (submitSuccess) {
+      setFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        userRole: '',
+        preferredContact: '',
+        heardAboutUs: '',
+        message: '',
+        customBadge: '',
+        customTags: [],
+      });
+      setSelectedRole('');
+    }
+  }, [submitSuccess]);
+
   return (
     <>
       {mounted && (
@@ -692,6 +806,21 @@ export default function SupportPage() {
                               </div>
                             </motion.div>
 
+                            {/* Feedback Message */}
+                            <AnimatePresence mode="wait">
+                              {feedback.message && (
+                                <motion.div
+                                  key="feedback"
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  transition={{ duration: 0.2 }}
+                                >
+                                  {renderFeedback()}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
                             {/* Submit Button */}
                             <motion.div
                               className="flex justify-center"
@@ -700,11 +829,29 @@ export default function SupportPage() {
                               <button
                                 type="submit"
                                 className="inline-flex items-center justify-center space-x-2 px-8 py-3 rounded-lg bg-primary text-white hover:bg-primary-dark transition-all duration-300 transform hover:scale-105"
+                                disabled={isSubmitting}
                               >
-                                <span>Submit Request</span>
-                                <Send className="w-4 h-4" />
+                                {isSubmitting ? (
+                                  <span>Submitting...</span>
+                                ) : (
+                                  <>
+                                    <span>Submit Request</span>
+                                    <Send className="w-4 h-4" />
+                                  </>
+                                )}
                               </button>
                             </motion.div>
+                            {submitSuccess && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                className="mt-4 text-center text-green-400"
+                              >
+                                <p>{feedback.message}</p>
+                                <p>Redirecting in {countdown} seconds...</p>
+                              </motion.div>
+                            )}
                           </form>
                         </motion.div>
                       </div>
@@ -713,6 +860,7 @@ export default function SupportPage() {
                 )}
               </motion.div>
             </AnimatePresence>
+            {isSubmitting && <Loader />}
           </div>
         </ParallaxProvider>
       )}
